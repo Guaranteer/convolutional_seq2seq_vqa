@@ -166,13 +166,12 @@ class Trainer(object):
                 if i_batch % self.params['display_batch_interval'] == 0:
                     t2 = time.time()
                     print ('Epoch %d, Batch %d, loss = %.4f, %.3f seconds/batch' % (i_epoch, i_batch, train_loss, (t2-t1)/self.params['display_batch_interval']))
-                    print('learning_rate: ', learning_rate)
-                    print('question:    ', question)
-                    print('ground_a:    ', ground_a)
-                    print('generated:    ', generate_a)
-                    print('wups_value:  ', wups_value)
-                    print('wups_value2: ', wups_value2)
-                    print('Bleu1 value: ', bleu1_value)
+                    # print('question:    ', question)
+                    # print('ground_a:    ', ground_a)
+                    # print('generated:    ', generate_a)
+                    # print('wups_value:  ', wups_value)
+                    # print('wups_value2: ', wups_value2)
+                    # print('Bleu1 value: ', bleu1_value)
                     t1 = t2
 
 
@@ -191,21 +190,25 @@ class Trainer(object):
             print('Bleu1 for each type:', type_bleu1_acc)
             print(type_count)
 
+
             # print info
-            avg_batch_loss = loss_sum/i_batch
+            avg_batch_loss = loss_sum / i_batch
             t_end = time.time()
+            print('Epoch %d ends. Average loss %.3f. %.3f seconds/epoch' % (i_epoch, avg_batch_loss, t_end - t_begin))
+            print('learning_rate: ', learning_rate)
+
             if i_epoch % self.params['evaluate_interval'] == 0:
-                print ('****************************')
-                print ('Overall evaluation')
-                print ('****************************')
+                print('****************************')
+                print('Overall evaluation')
+                print('****************************')
                 _, valid_acc, _ = self._test(sess)
-                print ('Epoch %d ends. Average loss %.3f. %.3f seconds/epoch' % (i_epoch, avg_batch_loss, t_end-t_begin))
-                print ('****************************')
+                print('****************************')
             else:
-                print ('****************************')
-                print ('Epoch %d ends. Average loss %.3f. %.3f seconds/epoch' % (i_epoch, avg_batch_loss, t_end-t_begin))
+                print('****************************')
+                print('Valid evaluation')
+                print('****************************')
                 valid_acc = self._evaluate(sess, self.model, self.valid_batcher)
-                print ('****************************')
+                print('****************************')
 
             # save model and early stop
             if valid_acc > best_epoch_acc:
@@ -288,14 +291,13 @@ class Trainer(object):
                 bleu1_count[type_vec[i]] += bleu1_value
 
             i_batch += 1
-            if i_batch % 20 == 0:
+            if i_batch % 100 == 0:
                 print('batch index:', i_batch)
                 print('question:    ', question)
                 print('ground_a:    ', ground_a)
                 print('generated:    ', generate_a)
 
 
-        print('****************************')
         wup_acc = wups_count.sum() / type_count.sum()
         wup_acc2 = wups_count2.sum() / type_count.sum()
         bleu1_acc = bleu1_count.sum() / type_count.sum()
@@ -309,7 +311,7 @@ class Trainer(object):
         print('Wup@0.9 for each type:', type_wup_acc2)
         print('Bleu1 for each type:', type_bleu1_acc)
         print(type_count)
-        return wup_acc2
+        return bleu1_acc
 
     def _test(self, sess):
         print ('Validation set:')

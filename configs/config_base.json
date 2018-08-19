@@ -4,9 +4,8 @@
     "lr_decay_rate": 0.8,
     "max_epoches": 1000,
     "early_stopping": 5,
-    "cache_dir": "../results/",
-    "display_batch_interval": 20,
-    "summary_interval": 10,
+    "cache_dir": "../results/AHN/",
+    "display_batch_interval": 50,
     "evaluate_interval": 5,
     "saving_interval": 1000,
     "epoch_reshuffle": true,
@@ -26,8 +25,6 @@
 
     "input_video_dim": 202,
     "max_n_frames": 240,
-
-
     "max_n_q_words": 20,
     "max_n_a_words": 10,
     "input_ques_dim": 300,

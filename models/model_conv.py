@@ -93,7 +93,7 @@ class ConvModel(object):
                                                 {'src': self.params["embedding_dropout_keep_prob"],
                                                  'hid': self.params["nhid_dropout_keep_prob"]}, mode=self.is_training)
 
-            frame_next_layer = linear_mapping_weightnorm(frame_next_layer, self.params["input_video_dim"],
+            frame_next_layer = linear_mapping_weightnorm(frame_next_layer, self.input_frame_dim,
                                                        var_scope_name="linear_mapping_after_cnn")
 
             ## The encoder stack will receive gradients *twice* for each attention pass: dot product and weighted sum.
@@ -131,6 +131,13 @@ class ConvModel(object):
             ques_value_mask = tf.multiply(self.ques_value_output, tf.expand_dims(ques_mask, 2))
             self.ques_final_state = tf.reduce_mean(ques_value_mask, 1)
 
+        self.frame_final_state = linear_mapping(self.frame_final_state, self.input_ans_dim,
+                                                     var_scope_name="linear_mapping_frame_final_state")
+        self.frame_value_output = linear_mapping_weightnorm(self.frame_value_output, self.input_ans_dim,
+                                                     var_scope_name="linear_mapping_frame_value_output")
+        self.frame_final_output = linear_mapping_weightnorm(self.frame_final_output, self.input_ans_dim,
+                                                    var_scope_name="linear_mapping_frame_final_output")
+
         self.encoder_output = EncoderOutput(
             frame_final_output=self.frame_final_output,
             frame_value_output=self.frame_value_output,
@@ -148,13 +155,14 @@ class ConvModel(object):
 
         self.target = tf.placeholder(tf.int32, [None, self.max_n_a_words])
         self.target_mask = tf.placeholder(tf.float32, [None, self.max_n_a_words])
-        self.ans_vecs = tf.placeholder(tf.float32, [None, self.max_n_a_words, self.input_ans_dim])
+        self.answer_vecs = tf.placeholder(tf.float32, [None, self.max_n_a_words, self.input_ans_dim], name="ans_vecs")
         self.reward = tf.placeholder(tf.float32, [None])
+
 
 
         if self.params["position_embeddings_enable"]:
             ans_positions_embed = tf.tile([self.decoder_pos_embed], [self.batch_size, 1, 1])
-            self.ans_vecs = tf.add(self.ans_vecs, ans_positions_embed)
+            self.ans_vecs = tf.add(self.answer_vecs, ans_positions_embed)
 
         # Apply dropout to embeddings
         self.ans_vecs = tf.contrib.layers.dropout(
@@ -163,10 +171,10 @@ class ConvModel(object):
             is_training=self.is_training
         )
 
-        start_vecs = linear_mapping(self.ques_final_state, self.input_ans_dim,
-                                               dropout=self.params["embedding_dropout_keep_prob"],
-                                               var_scope_name="linear_mapping_start_vecs")
-        self.start_vecs = tf.expand_dims(start_vecs,1)
+        # start_vecs = linear_mapping(self.ques_final_state, self.input_ans_dim,
+        #                                        dropout=self.params["embedding_dropout_keep_prob"],
+        #                                        var_scope_name="linear_mapping_start_vecs")
+        self.start_vecs = tf.expand_dims(self.encoder_output.ques_final_state,1)
         self.ans_vecs = tf.concat([self.start_vecs, self.ans_vecs[:,:-1,:]], axis=1)
         assert self.ans_vecs.get_shape().as_list()[1] == self.max_n_a_words
 
@@ -190,7 +198,7 @@ class ConvModel(object):
         decoder_next_layer = self.ans_vecs
 
         decoder_nhids_list = parse_list_or_default(self.params["decoder_nhids"], self.params["decoder_layers"],
-                                                       self.params["cnn.nhid_default"])
+                                                       self.params["decoder_nhid_default"])
         decoder_kwidths_list = parse_list_or_default(self.params["decoder_kwidths"], self.params["decoder_layers"],
                                                          self.params["decoder_kwidth_default"])
 
@@ -265,7 +273,7 @@ class ConvModel(object):
 
 
             decoder_nhids_list = parse_list_or_default(self.params["decoder_nhids"], self.params["decoder_layers"],
-                                                           self.params["cnn.nhid_default"])
+                                                           self.params["decoder_nhid_default"])
             decoder_kwidths_list = parse_list_or_default(self.params["decoder_kwidths"], self.params["decoder_layers"],
                                                              self.params["decoder_kwidth_default"])
 
@@ -274,7 +282,7 @@ class ConvModel(object):
                                                                dropout=self.params["embedding_dropout_keep_prob"],
                                                                var_scope_name="linear_mapping_before_cnn")
 
-            decoder_next_layer = conv_decoder_stack(self.ans_vecs, self.encoder_output, decoder_next_layer,
+            decoder_next_layer = conv_decoder_stack(current_emb, self.encoder_output, decoder_next_layer,
                                                         decoder_nhids_list, decoder_kwidths_list,
                                                         {'src': self.params["embedding_dropout_keep_prob"],
                                                          'hid': self.params["nhid_dropout_keep_prob"]},

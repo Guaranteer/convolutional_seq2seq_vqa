@@ -207,12 +207,13 @@ def make_attention(target_embed, encoder_output, decoder_hidden, layer_idx):
         embed_size = target_embed.get_shape().as_list()[-1]  # k
         dec_hidden_proj = linear_mapping_weightnorm(decoder_hidden, embed_size,
                                                     var_scope_name="linear_mapping_att_frame")  # M*N1*k1 --> M*N1*k
-        ques_hidden_proj = linear_mapping(encoder_output.ques_final_state, embed_size, var_scope_name="linear_mapping_att_query")
-        ques_hidden_proj = tf.expand_dims(ques_hidden_proj,1)
+        # ques_hidden_proj = linear_mapping(encoder_output.ques_final_state, embed_size, var_scope_name="linear_mapping_att_query")
+        ques_hidden_proj = tf.expand_dims(encoder_output.ques_final_state, 1)
         dec_rep = (dec_hidden_proj + target_embed + ques_hidden_proj) * tf.sqrt(0.3333)
 
         encoder_output_a = encoder_output.frame_final_output
         encoder_output_c = encoder_output.frame_value_output  # M*N2*K
+
 
         att_score = tf.matmul(dec_rep, encoder_output_a, transpose_b=True)  # M*N1*K  ** M*N2*K  --> M*N1*N2
         att_score = tf.nn.softmax(att_score)
