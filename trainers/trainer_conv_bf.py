@@ -2,7 +2,7 @@ import sys
 
 sys.path.append('..')
 from dataloaders.data_feed_open import Batcher
-from models.model_conv import ConvModel
+from models.model_conv_bs import ConvBeamSearchModel
 from tools import wups, utils
 import time
 import tensorflow as tf
@@ -332,6 +332,6 @@ if __name__ == '__main__':
     with open(config_file, 'r') as fr:
         config = json.load(fr)
     # print(config)
-    model = ConvModel(config)
+    model = ConvBeamSearchModel(config)
     trainer = Trainer(config, model)
     trainer.train()

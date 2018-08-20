@@ -22,7 +22,6 @@ class Trainer(object):
         self.params = params
         self.model = model
         self.index2word = load_file(self.params['index2word'])
-        #print(self.index2word)
 
 
     def train(self):
@@ -79,10 +78,12 @@ class Trainer(object):
         utils.count_total_variables()
         print ('****************************')
 
+        all_epoch_time = 0
+        epoch_time_list = list()
         for i_epoch in range(self.params['max_epoches']):
             # train an epoch
-            t_begin = time.time()
-            t1 = time.time()
+
+            all_batch_time = 0
             self.train_batcher.reset()
             i_batch = 0
             loss_sum = 0
@@ -97,7 +98,6 @@ class Trainer(object):
                     break
 
                 batch_data = dict()
-                # print(ans_word,ques_word)
                 batch_data[self.model.y] = ans_word
                 batch_data[self.model.input_x] = img_frame_vecs
                 batch_data[self.model.input_x_len] = img_frame_n
@@ -112,67 +112,77 @@ class Trainer(object):
                     row[:ans_n[ind]] = 1
                 batch_data[self.model.y_mask] = mask_matrix
 
-                train_ans, learning_rate = sess.run([self.model.answer_word_train, learning_rates], \
-                                    feed_dict=batch_data)
-                train_ans = np.transpose(np.array(train_ans), (1,0))
+
+                batch_t1 = time.time()
+                _, train_loss, train_ans, learning_rate = sess.run(
+                    [train_proc, self.model.train_loss, self.model.answer_word_train, learning_rates],
+                    feed_dict=batch_data)
+                # train_ans, learning_rate = sess.run([self.model.answer_word_train, learning_rates], feed_dict=batch_data)
+                batch_t2 = time.time()
+                batch_time = batch_t2 - batch_t1
+                all_batch_time += batch_time
+
+
 
                 # get word and calculate WUPS
+                train_ans = np.transpose(np.array(train_ans), (1, 0))
                 reward = np.ones(len(ans_vecs), dtype=float)
                 for i in range(len(type_vec)):
                     type_count[type_vec[i]] += 1
                     ground_a = list()
                     for l in range(self.params['max_n_a_words']):
                         word = ans_word[i][l]
-                        ground_a.append(self.index2word[word])
                         if self.index2word[word] == 'EOS':
                             break
+                        ground_a.append(self.index2word[word])
+
                         
 
 
                     generate_a = list()
                     for l in range(self.params['max_n_a_words']):
                         word=train_ans[i][l]
-                        generate_a.append(self.index2word[word])
                         if self.index2word[word] == 'EOS':
                             break
+                        generate_a.append(self.index2word[word])
+
 
 
                     question = list()
                     for l in range(self.params['max_n_q_words']):
                         word = ques_word[i][l]
-                        question.append(self.index2word[word])
                         if self.index2word[word] == '<PAD>':
                             break
+                        question.append(self.index2word[word])
+
 
 
 
                     wups_value = wups.compute_wups(ground_a, generate_a, 0.0)
                     wups_value2 = wups.compute_wups(ground_a, generate_a, 0.9)
                     bleu1_value = wups.compute_wups(ground_a, generate_a, -1)
-                    # bleu1_value = bleu.calculate_bleu(' '.join(ground_a), ' '.join(generate_a))
                     wups_count[type_vec[i]] += wups_value
                     wups_count2[type_vec[i]] += wups_value2
                     bleu1_count[type_vec[i]] += bleu1_value
 
-                    reward[i] = wups_value2
+                    reward[i] = bleu1_value
 
-                batch_data[self.model.reward] = reward
-                _, train_loss = sess.run([train_proc, self.model.train_loss], feed_dict=batch_data)
+
+                # batch_data[self.model.reward] = reward
+                # _, train_loss = sess.run([train_proc, self.model.train_loss], feed_dict=batch_data)
 
 
                 # display batch info
                 i_batch += 1
                 loss_sum += train_loss
                 if i_batch % self.params['display_batch_interval'] == 0:
-                    t2 = time.time()
-                    print ('Epoch %d, Batch %d, loss = %.4f, %.3f seconds/batch' % (i_epoch, i_batch, train_loss, (t2-t1)/self.params['display_batch_interval']))
+                    print ('Epoch %d, Batch %d, loss = %.4f, %.3f seconds/batch' % (i_epoch, i_batch, train_loss, all_batch_time/i_batch))
                     # print('question:    ', question)
                     # print('ground_a:    ', ground_a)
                     # print('generated:    ', generate_a)
                     # print('wups_value:  ', wups_value)
                     # print('wups_value2: ', wups_value2)
                     # print('Bleu1 value: ', bleu1_value)
-                    t1 = t2
 
 
             print('****************************')
@@ -192,9 +202,11 @@ class Trainer(object):
 
 
             # print info
+
             avg_batch_loss = loss_sum / i_batch
-            t_end = time.time()
-            print('Epoch %d ends. Average loss %.3f. %.3f seconds/epoch' % (i_epoch, avg_batch_loss, t_end - t_begin))
+            all_epoch_time += all_batch_time
+            epoch_time_list.append(all_epoch_time)
+            print('Epoch %d ends. Average loss %.3f. %.3f seconds/epoch' % (i_epoch, avg_batch_loss, all_batch_time))
             print('learning_rate: ', learning_rate)
 
             if i_epoch % self.params['evaluate_interval'] == 0:
@@ -232,6 +244,8 @@ class Trainer(object):
         wups_count = np.zeros(self.params['n_types'], dtype=float)
         wups_count2 = np.zeros(self.params['n_types'], dtype=float)
         i_batch = 0
+        all_batch_time = 0
+
 
         for img_frame_vecs, img_frame_n, ques_vecs, ques_n, ques_word, ans_vecs, ans_n, ans_word, type_vec, batch_size in batcher.generate():
             if ans_vecs is None:
@@ -253,7 +267,12 @@ class Trainer(object):
                 row[:ans_n[ind]] = 1
             batch_data[model.y_mask] = mask_matrix
 
+
+            batch_t1 = time.time()
             test_ans = sess.run(self.model.answer_word_test, feed_dict=batch_data)
+            batch_t2 = time.time()
+            batch_time = batch_t2 - batch_t1
+            all_batch_time += batch_time
             test_ans = np.transpose(np.array(test_ans), (1,0))
 
             for i in range(len(type_vec)):
@@ -261,25 +280,28 @@ class Trainer(object):
                 ground_a = list()
                 for l in range(self.params['max_n_a_words']):
                     word = ans_word[i][l]
-                    ground_a.append(self.index2word[word])
                     if self.index2word[word] == 'EOS':
                         break
+                    ground_a.append(self.index2word[word])
+
                     
 
 
                 generate_a = list()
                 for l in range(self.params['max_n_a_words']):
                     word = test_ans[i][l]
-                    generate_a.append(self.index2word[word])
                     if self.index2word[word] == 'EOS':
                         break
+                    generate_a.append(self.index2word[word])
+
 
                 question = list()
                 for l in range(self.params['max_n_q_words']):
                     word = ques_word[i][l]
-                    question.append(self.index2word[word])
                     if self.index2word[word] == '<PAD>':
                         break
+                    question.append(self.index2word[word])
+
                     
 
                 wups_value = wups.compute_wups(ground_a, generate_a, 0.0)
@@ -310,7 +332,8 @@ class Trainer(object):
         print('Wup@0 for each type:', type_wup_acc)
         print('Wup@0.9 for each type:', type_wup_acc2)
         print('Bleu1 for each type:', type_bleu1_acc)
-        print(type_count)
+        print('type count:        ', type_count)
+        print('all test time:  ',all_batch_time)
         return bleu1_acc
 
     def _test(self, sess):

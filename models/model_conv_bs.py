@@ -11,7 +11,7 @@ EncoderOutput = namedtuple(
     "EncoderOutput",
     "frame_final_output frame_value_output frame_final_state frame_length ques_final_output ques_value_output ques_final_state ques_length")
 
-class ConvModel(object):
+class ConvBeamSearchModel(object):
 
     def __init__(self, params):
 
@@ -25,6 +25,7 @@ class ConvModel(object):
         self.max_n_a_words = params['max_n_a_words']
         self.vocab_size = params['n_words']
         self.regularization_beta = params['regularization_beta']
+        self.beam_width = params['beam_width']
 
 
 
@@ -151,6 +152,7 @@ class ConvModel(object):
 
 
 
+
     def build_decoder(self):
 
         self.target = tf.placeholder(tf.int32, [None, self.max_n_a_words])
@@ -257,7 +259,34 @@ class ConvModel(object):
         loss = loss / tf.reduce_sum(self.target_mask[:, 1:])
         return answer_train, loss
 
+
     def build_test_decoder(self):
+
+
+        self.ques_final_state = tf.tile(self.ques_final_state,[self.beam_width, 1])
+        self.ques_final_output = tf.tile(self.ques_final_output,[self.beam_width, 1, 1])
+        self.ques_value_output = tf.tile(self.ques_value_output,[self.beam_width, 1, 1])
+        self.frame_value_output = tf.tile(self.frame_value_output,[self.beam_width, 1, 1])
+        self.frame_final_state = tf.tile(self.frame_final_state,[self.beam_width, 1])
+        self.frame_final_output = tf.tile(self.frame_final_output,[self.beam_width, 1, 1])
+        self.start_vecs = tf.tile(self.start_vecs,[self.beam_width,1,1])
+        self.encoder_output_bs = EncoderOutput(
+            frame_final_output=self.frame_final_output,
+            frame_value_output=self.frame_value_output,
+            frame_final_state=self.frame_final_state,
+            frame_length=self.frame_len,
+            ques_final_output=self.ques_final_output,
+            ques_value_output=self.ques_value_output,
+            ques_final_state=self.ques_final_state,
+            ques_length=self.ques_len
+        )
+
+        # sequences = [[[list(),1.0]*self.batch_size]]
+        sequences = [[list()]]
+        scores = [[1.0]]
+        sequences = tf.tile(sequences,[self.batch_size,1,1])
+        scores = tf.tile(scores,[self.batch_size,1])
+
 
         answer_test = list()
         loss = 0.0
@@ -266,8 +295,15 @@ class ConvModel(object):
             if i == 0:
                 current_emb = self.start_vecs
             else:
-                next_word_vec = tf.expand_dims(tf.nn.embedding_lookup(self.vocab_embeddings, max_prod_idx),1)
-                current_emb = tf.concat([current_emb, next_word_vec], 1)
+                next_word_vecs = list()
+                for i_batch in range(self.batch_size):
+                    for j in range(len(sequences[i_batch])):
+                        seq, _ = sequences[i_batch][j]
+                        word_vecs = tf.expand_dims(tf.nn.embedding_lookup(self.vocab_embeddings, seq), 0)
+                        next_word_vecs.append(word_vecs)
+
+                new_word_vecs = tf.concat(new_word_vecs, axis=0)
+                current_emb = tf.concat([current_emb, new_word_vecs], 1)
 
             decoder_next_layer = current_emb
 
@@ -282,7 +318,7 @@ class ConvModel(object):
                                                                dropout=self.params["embedding_dropout_keep_prob"],
                                                                var_scope_name="linear_mapping_before_cnn")
 
-            decoder_next_layer = conv_decoder_stack(current_emb, self.encoder_output, decoder_next_layer,
+            decoder_next_layer = conv_decoder_stack(current_emb, self.encoder_output_bs, decoder_next_layer,
                                                         decoder_nhids_list, decoder_kwidths_list,
                                                         {'src': self.params["embedding_dropout_keep_prob"],
                                                          'hid': self.params["nhid_dropout_keep_prob"]},
@@ -304,20 +340,26 @@ class ConvModel(object):
                                                    var_scope_name="logits_before_softmax")
 
             logits = tf.squeeze(logits, 1)
-            max_prod_idx = tf.cast(tf.argmax(logits, axis=-1), tf.int32)
-            answer_test.append(max_prod_idx)
+            top_prods, top_prod_idxs, = tf.nn.top_k(logits, k=self.beam_width)
+            # max_prod_idx = tf.cast(tf.argmax(logits, axis=-1), tf.int32)
+            # answer_test.append(top_prod_idxs)
 
-            # ground truth
-            labels = tf.expand_dims(self.target[:, i], 1)
-            indices = tf.expand_dims(tf.range(0, self.batch_size, 1), 1)
-            concated = tf.concat([indices, labels], 1)
-            onehot_labels = tf.sparse_to_dense(concated, tf.stack([self.batch_size, self.vocab_size]), 1.0, 0.0)
+            all_condidates = list()
+            for i_batch in range(len(sequences)):
+                for j in range(len(sequences[i_batch])):
+                    seq, score = sequences[i_batch][j]
+                    for k in range(self.beam_width):
+                        condidate = [seq + [top_prod_idxs[i_batch][k]], score*(-tf.log(top_prod_idxs[i_batch][k]))]
+                        all_condidates.append(condidate)
+                    ordered = sorted(all_condidates, key=lambda x: x[1])
+                    sequences[i_batch] = ordered[:self.beam_width]
 
-            cross_entropy = tf.nn.softmax_cross_entropy_with_logits(labels=onehot_labels, logits=logits)
-            # cross_entropy = cross_entropy * self.reward
-            cross_entropy = cross_entropy * self.target_mask[:, i]
-            current_loss = tf.reduce_sum(cross_entropy)
-            loss = loss + current_loss
+        answer_seq = list()
+        for i_batch in range(len(sequences)):
+            seq, score = sequences[i_batch][0]
+            answer_seq.append(seq)
+        answer_idxs = tf.stack(answer_seq)
+        answer_test = tf.unstack(answer_idxs, num=self.max_n_a_words, axis = 1)
 
-        loss = loss / tf.reduce_sum(self.target_mask[:, 1:])
+
         return answer_test, loss

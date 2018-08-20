@@ -228,7 +228,7 @@ class Model(object):
                     answer_train.append(max_prob_word)
 
                     cross_entropy = tf.nn.softmax_cross_entropy_with_logits(labels=onehot_labels, logits=logit_words)
-                    cross_entropy = cross_entropy * self.reward
+                    # cross_entropy = cross_entropy * self.reward
                     cross_entropy = cross_entropy * self.y_mask[:,i]
                     current_loss = tf.reduce_sum(cross_entropy)
                     loss = loss + current_loss
@@ -290,7 +290,7 @@ class Model(object):
                     answer_test.append(max_prob_word)
 
                     cross_entropy = tf.nn.softmax_cross_entropy_with_logits(labels=onehot_labels, logits=logit_words)
-                    cross_entropy = cross_entropy * self.reward
+                    # cross_entropy = cross_entropy * self.reward
                     cross_entropy = cross_entropy * self.y_mask[:,i]
                     current_loss = tf.reduce_sum(cross_entropy)
                     loss = loss + current_loss
