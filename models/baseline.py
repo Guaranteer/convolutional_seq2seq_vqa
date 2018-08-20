@@ -53,6 +53,7 @@
 # # softmax projection [batch_size, 2*lstm_dim] -> [batch_size, n_classes]
 # self.output = layers.linear_layer(concat_output, self.n_classes, 'linear')
 
+
 ################
 ##  VQA model ##
 ################

@@ -281,14 +281,13 @@ class ConvBeamSearchModel(object):
             ques_length=self.ques_len
         )
 
-        # sequences = [[[list(),1.0]*self.batch_size]]
-        sequences = [[list()]]
-        scores = [[1.0]]
-        sequences = tf.tile(sequences,[self.batch_size,1,1])
-        scores = tf.tile(scores,[self.batch_size,1])
+        sequences = [[[[], 1.0]]*64]
 
+        # sequences = [[list()]]
+        # scores = [[1.0]]
+        # sequences = tf.tile(sequences,[self.batch_size,1,1])
+        # scores = tf.tile(scores,[self.batch_size,1])
 
-        answer_test = list()
         loss = 0.0
 
         for i in range(self.max_n_a_words):
