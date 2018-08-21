@@ -262,103 +262,43 @@ class ConvBeamSearchModel(object):
 
     def build_test_decoder(self):
 
+        decoder_next_layer = self.ans_vecs
 
-        self.ques_final_state = tf.tile(self.ques_final_state,[self.beam_width, 1])
-        self.ques_final_output = tf.tile(self.ques_final_output,[self.beam_width, 1, 1])
-        self.ques_value_output = tf.tile(self.ques_value_output,[self.beam_width, 1, 1])
-        self.frame_value_output = tf.tile(self.frame_value_output,[self.beam_width, 1, 1])
-        self.frame_final_state = tf.tile(self.frame_final_state,[self.beam_width, 1])
-        self.frame_final_output = tf.tile(self.frame_final_output,[self.beam_width, 1, 1])
-        self.start_vecs = tf.tile(self.start_vecs,[self.beam_width,1,1])
-        self.encoder_output_bs = EncoderOutput(
-            frame_final_output=self.frame_final_output,
-            frame_value_output=self.frame_value_output,
-            frame_final_state=self.frame_final_state,
-            frame_length=self.frame_len,
-            ques_final_output=self.ques_final_output,
-            ques_value_output=self.ques_value_output,
-            ques_final_state=self.ques_final_state,
-            ques_length=self.ques_len
-        )
+        decoder_nhids_list = parse_list_or_default(self.params["decoder_nhids"], self.params["decoder_layers"],
+                                                   self.params["decoder_nhid_default"])
+        decoder_kwidths_list = parse_list_or_default(self.params["decoder_kwidths"], self.params["decoder_layers"],
+                                                     self.params["decoder_kwidth_default"])
 
-        sequences = [[[[], 1.0]]*64]
+        # mapping emb dim to hid dim
+        decoder_next_layer = linear_mapping_weightnorm(decoder_next_layer, decoder_nhids_list[0],
+                                                       dropout=self.params["embedding_dropout_keep_prob"],
+                                                       var_scope_name="linear_mapping_before_cnn")
 
-        # sequences = [[list()]]
-        # scores = [[1.0]]
-        # sequences = tf.tile(sequences,[self.batch_size,1,1])
-        # scores = tf.tile(scores,[self.batch_size,1])
+        decoder_next_layer = conv_decoder_stack(self.ans_vecs, self.encoder_output, decoder_next_layer,
+                                                decoder_nhids_list, decoder_kwidths_list,
+                                                {'src': self.params["embedding_dropout_keep_prob"],
+                                                 'hid': self.params["nhid_dropout_keep_prob"]},
+                                                mode=self.is_training)
 
-        loss = 0.0
+        # argmax
 
-        for i in range(self.max_n_a_words):
-            if i == 0:
-                current_emb = self.start_vecs
-            else:
-                next_word_vecs = list()
-                for i_batch in range(self.batch_size):
-                    for j in range(len(sequences[i_batch])):
-                        seq, _ = sequences[i_batch][j]
-                        word_vecs = tf.expand_dims(tf.nn.embedding_lookup(self.vocab_embeddings, seq), 0)
-                        next_word_vecs.append(word_vecs)
-
-                new_word_vecs = tf.concat(new_word_vecs, axis=0)
-                current_emb = tf.concat([current_emb, new_word_vecs], 1)
-
-            decoder_next_layer = current_emb
-
-
-            decoder_nhids_list = parse_list_or_default(self.params["decoder_nhids"], self.params["decoder_layers"],
-                                                           self.params["decoder_nhid_default"])
-            decoder_kwidths_list = parse_list_or_default(self.params["decoder_kwidths"], self.params["decoder_layers"],
-                                                             self.params["decoder_kwidth_default"])
-
-            # mapping emb dim to hid dim
-            decoder_next_layer = linear_mapping_weightnorm(decoder_next_layer, decoder_nhids_list[0],
-                                                               dropout=self.params["embedding_dropout_keep_prob"],
-                                                               var_scope_name="linear_mapping_before_cnn")
-
-            decoder_next_layer = conv_decoder_stack(current_emb, self.encoder_output_bs, decoder_next_layer,
-                                                        decoder_nhids_list, decoder_kwidths_list,
-                                                        {'src': self.params["embedding_dropout_keep_prob"],
-                                                         'hid': self.params["nhid_dropout_keep_prob"]},
-                                                        mode=self.is_training)
-
-            # argmax
-
-
-            decoder_next_layer = linear_mapping_weightnorm(decoder_next_layer[:, -1:, :], self.params["nout_embed"],
+        decoder_next_layer = linear_mapping_weightnorm(decoder_next_layer[:, :, :], self.params["nout_embed"],
                                                        var_scope_name="linear_mapping_after_cnn")
 
-            decoder_next_layer = tf.contrib.layers.dropout(
-                    inputs=decoder_next_layer,
-                    keep_prob=self.params["out_dropout_keep_prob"],
-                    is_training=self.is_training)
+        decoder_next_layer = tf.contrib.layers.dropout(
+            inputs=decoder_next_layer,
+            keep_prob=self.params["out_dropout_keep_prob"],
+            is_training=self.is_training)
 
-            logits = linear_mapping_weightnorm(decoder_next_layer, self.vocab_size, in_dim=self.params["nout_embed"],
-                                                   dropout=self.params["out_dropout_keep_prob"],
-                                                   var_scope_name="logits_before_softmax")
+        logits = linear_mapping_weightnorm(decoder_next_layer, self.vocab_size, in_dim=self.params["nout_embed"],
+                                           dropout=self.params["out_dropout_keep_prob"],
+                                           var_scope_name="logits_before_softmax")
 
-            logits = tf.squeeze(logits, 1)
-            top_prods, top_prod_idxs, = tf.nn.top_k(logits, k=self.beam_width)
-            # max_prod_idx = tf.cast(tf.argmax(logits, axis=-1), tf.int32)
-            # answer_test.append(top_prod_idxs)
+        top_prods, top_prod_idxs, = tf.nn.top_k(logits, k=self.beam_width)
 
-            all_condidates = list()
-            for i_batch in range(len(sequences)):
-                for j in range(len(sequences[i_batch])):
-                    seq, score = sequences[i_batch][j]
-                    for k in range(self.beam_width):
-                        condidate = [seq + [top_prod_idxs[i_batch][k]], score*(-tf.log(top_prod_idxs[i_batch][k]))]
-                        all_condidates.append(condidate)
-                    ordered = sorted(all_condidates, key=lambda x: x[1])
-                    sequences[i_batch] = ordered[:self.beam_width]
 
-        answer_seq = list()
-        for i_batch in range(len(sequences)):
-            seq, score = sequences[i_batch][0]
-            answer_seq.append(seq)
-        answer_idxs = tf.stack(answer_seq)
-        answer_test = tf.unstack(answer_idxs, num=self.max_n_a_words, axis = 1)
+        answer_test = [top_prods, top_prod_idxs]
 
+        loss = 0.0
 
         return answer_test, loss

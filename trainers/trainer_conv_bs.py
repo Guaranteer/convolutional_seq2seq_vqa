@@ -22,6 +22,7 @@ class Trainer(object):
         self.params = params
         self.model = model
         self.index2word = load_file(self.params['index2word'])
+        self.beam_width = self.params["beam_width"]
         # print(self.index2word)
 
     def train(self):
@@ -239,6 +240,15 @@ class Trainer(object):
             if ans_vecs is None:
                 break
 
+
+            ques_vecs = np.tile(ques_vecs,[self.beam_width, 1, 1])
+            ans_word = np.tile(ans_word,[self.beam_width, 1])
+            img_frame_vecs = np.tile(img_frame_vecs,[self.beam_width, 1, 1])
+            img_frame_n = np.tile(img_frame_n,[self.beam_width])
+            ques_n = np.tile(ques_n,[self.beam_width])
+            batch_size_beam_search = batch_size*self.beam_width
+
+
             batch_data = {
                 model.ques_vecs: ques_vecs,
                 model.target: ans_word,
@@ -246,8 +256,7 @@ class Trainer(object):
                 model.frame_len: img_frame_n,
                 model.ques_len: ques_n,
                 model.is_training: False,
-                model.batch_size: batch_size,
-                model.answer_vecs: ans_vecs
+                model.batch_size: batch_size_beam_search
             }
 
             mask_matrix = np.zeros([np.shape(ans_n)[0], self.params['max_n_a_words']], np.int32)
@@ -255,12 +264,52 @@ class Trainer(object):
                 row[:ans_n[ind]] = 1
             batch_data[model.target_mask] = mask_matrix
 
-            batch_t1 = time.time()
-            test_ans = sess.run(self.model.answer_word_test, feed_dict=batch_data)
-            batch_t2 = time.time()
-            batch_time = batch_t2 - batch_t1
-            all_batch_time += batch_time
-            test_ans = np.transpose(np.array(test_ans), (1, 0))
+
+            sequences = list()
+            for i_batch in range(batch_size):
+                global_seqs_and_scores = list()
+                for j in range(self.beam_width):
+                    global_seqs_and_scores.append([list(),1.0])
+                sequences.append(global_seqs_and_scores)
+            cur_ans_vecs = np.zeros(shape=[batch_size_beam_search, self.params['max_n_a_words'], self.params['input_ques_dim']])
+
+            for i in range(self.params['max_n_a_words']):
+                batch_data[model.answer_vecs] = cur_ans_vecs
+
+                batch_t1 = time.time()
+                test_ans = sess.run(self.model.answer_word_test, feed_dict=batch_data)
+                batch_t2 = time.time()
+                batch_time = batch_t2 - batch_t1
+                all_batch_time += batch_time
+
+                ans_prods, ans_idxs = test_ans[0], test_ans[1]
+                print(ans_prods.shape)
+                for i_batch in range(batch_size):
+                    all_condidates = list()
+                    global_seqs_and_scores = sequences[i_batch]
+                    for j in range(self.beam_width):
+                        for k in range(self.beam_width):
+                            cur_score = ans_prods[i_batch*self.beam_width+j][i][k]
+                            cur_idx = ans_idxs[i_batch*self.beam_width+j][i][k]
+                            condidate = [global_seqs_and_scores[j][0] + [cur_idx], global_seqs_and_scores[j][1]* (-np.log(cur_score))]
+                            all_condidates.append(condidate)
+                    ordered = sorted(all_condidates, key=lambda x: x[1])
+                    sequences[i_batch] = ordered[:self.beam_width]
+
+                for i_batch in range(batch_size):
+                    global_seqs_and_scores = sequences[i_batch]
+                    for j in range(len(global_seqs_and_scores)):
+                        global_seq = global_seqs_and_scores[j][0]
+                        cur_ans_vecs[i_batch * self.beam_width + j, :i+1, :] = self.train_batcher.all_word_vec[global_seq]
+
+
+
+
+
+
+            ans_prods, ans_idxs = test_ans[0], test_ans[1]
+            # print(ans_prods.shape, ans_idxs.shape)
+            # test_ans = np.transpose(np.array(test_ans), (1, 0))
 
             for i in range(len(type_vec)):
                 type_count[type_vec[i]] += 1
@@ -274,7 +323,7 @@ class Trainer(object):
 
                 generate_a = list()
                 for l in range(self.params['max_n_a_words']):
-                    word = test_ans[i][l]
+                    word = ans_idxs[i*self.beam_width][l][0]
                     if self.index2word[word] == 'EOS':
                         break
                     generate_a.append(self.index2word[word])
@@ -328,7 +377,7 @@ class Trainer(object):
 
 
 if __name__ == '__main__':
-    config_file = '../configs/config_conv.json'
+    config_file = '../configs/config_conv_bs.json'
     with open(config_file, 'r') as fr:
         config = json.load(fr)
     # print(config)
