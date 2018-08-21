@@ -30,11 +30,11 @@ class ConvModel(object):
 
         if self.params["position_embeddings_enable"]:
             self.encoder_frame_pos_embed = tf.get_variable('en_frame_pos_emb', shape=[self.input_n_frames,
-                                            self.input_frame_dim], dtype=tf.float32, initializer=tf.contrib.layers.xavier_initializer(), trainable=False)
+                                            self.input_frame_dim], dtype=tf.float32, initializer=tf.contrib.layers.xavier_initializer(), trainable=self.params["pos_trainable"])
             self.encoder_ques_pos_embed = tf.get_variable('en_ques_pos_emb', shape=[self.max_n_q_words,
-                                            self.input_ques_dim], dtype=tf.float32, initializer=tf.contrib.layers.xavier_initializer(), trainable=False)
+                                            self.input_ques_dim], dtype=tf.float32, initializer=tf.contrib.layers.xavier_initializer(), trainable=self.params["pos_trainable"])
             self.decoder_pos_embed = tf.get_variable('de_pos_emb', shape=[self.max_n_a_words,
-                                            self.input_ans_dim], dtype=tf.float32,initializer=tf.contrib.layers.xavier_initializer(), trainable=False)
+                                            self.input_ans_dim], dtype=tf.float32,initializer=tf.contrib.layers.xavier_initializer(), trainable=self.params["pos_trainable"])
 
         vocab_embeddings = load_file(self.params['word_embedding'])
         self.vocab_embeddings = tf.constant(vocab_embeddings, dtype=tf.float32)
@@ -57,19 +57,22 @@ class ConvModel(object):
 
         if self.params["position_embeddings_enable"]:
             frame_positions_embed = tf.tile([self.encoder_frame_pos_embed],[self.batch_size, 1, 1])
-            self.frame_vecs = tf.add(self.frame_vecs, frame_positions_embed)
+            self.frame_vecs_with_pos = tf.add(self.frame_vecs, frame_positions_embed)
             ques_positions_embed = tf.tile([self.encoder_ques_pos_embed], [self.batch_size, 1, 1])
-            self.ques_vecs = tf.add(self.ques_vecs, ques_positions_embed)
+            self.ques_vecs_with_pos = tf.add(self.ques_vecs, ques_positions_embed)
+        else:
+            self.frame_vecs_with_pos = self.frame_vecs
+            self.ques_vecs_with_pos = self.ques_vecs
 
         # Apply dropout to embeddings
-        self.frame_vecs = tf.contrib.layers.dropout(
-            inputs=self.frame_vecs,
+        self.frame_vecs_with_pos = tf.contrib.layers.dropout(
+            inputs=self.frame_vecs_with_pos,
             keep_prob=self.params["embedding_dropout_keep_prob"],
             is_training=self.is_training
         )
 
-        self.ques_vecs = tf.contrib.layers.dropout(
-            inputs=self.ques_vecs,
+        self.ques_vecs_with_pos = tf.contrib.layers.dropout(
+            inputs=self.ques_vecs_with_pos,
             keep_prob=self.params["embedding_dropout_keep_prob"],
             is_training=self.is_training
 
@@ -78,7 +81,7 @@ class ConvModel(object):
 
 
         with tf.variable_scope("encoder_frame_cnn"):
-            frame_next_layer = self.frame_vecs
+            frame_next_layer = self.frame_vecs_with_pos
 
             frame_nhids_list = parse_list_or_default(self.params["encoder_nhids"], self.params["encoder_layers"],
                                                    self.params["encoder_nhid_default"])
@@ -99,11 +102,11 @@ class ConvModel(object):
             ## The encoder stack will receive gradients *twice* for each attention pass: dot product and weighted sum.
             ## cnn = nn.GradMultiply(cnn, 1 / (2 * nattn))
             self.frame_final_output = frame_next_layer
-            self.frame_value_output = (frame_next_layer + self.frame_vecs) * tf.sqrt(0.5)
+            self.frame_value_output = (frame_next_layer + self.frame_vecs_with_pos) * tf.sqrt(0.5)
             self.frame_final_state = tf.reduce_mean(self.frame_value_output, 1)
 
         with tf.variable_scope("encoder_ques_cnn"):
-            ques_next_layer = self.ques_vecs
+            ques_next_layer = self.ques_vecs_with_pos
 
             ques_nhids_list = parse_list_or_default(self.params["ques_nhids"], self.params["ques_layers"],
                                                    self.params["ques_nhid_default"])
@@ -125,7 +128,7 @@ class ConvModel(object):
             ## The encoder stack will receive gradients *twice* for each attention pass: dot product and weighted sum.
             ## cnn = nn.GradMultiply(cnn, 1 / (2 * nattn))
             self.ques_final_output = ques_next_layer
-            self.ques_value_output = (ques_next_layer + self.ques_vecs) * tf.sqrt(0.5)
+            self.ques_value_output = (ques_next_layer + self.ques_vecs_with_pos) * tf.sqrt(0.5)
 
             ques_mask = tf.sequence_mask(lengths=self.ques_len, maxlen=self.params["max_n_q_words"], dtype=tf.float32)
             ques_value_mask = tf.multiply(self.ques_value_output, tf.expand_dims(ques_mask, 2))
@@ -163,6 +166,8 @@ class ConvModel(object):
         if self.params["position_embeddings_enable"]:
             ans_positions_embed = tf.tile([self.decoder_pos_embed], [self.batch_size, 1, 1])
             self.ans_vecs = tf.add(self.answer_vecs, ans_positions_embed)
+        else:
+            self.ans_vecs = self.answer_vecs
 
         # Apply dropout to embeddings
         self.ans_vecs = tf.contrib.layers.dropout(

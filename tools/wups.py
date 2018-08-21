@@ -69,6 +69,11 @@ def compute_wups(input_gt, input_pred, thresh):
     #     print 'standard Accuracy is used'
     # else:
     #     print 'soft WUPS is used'
+
+    # for gt in input_gt:
+    #     score_list = [measure(gt, pred) for pred in input_pred]
+
+
     score_list = [measure(ta, pa) for (ta, pa) in zip(input_gt, input_pred)]
     final_score = sum(map(
         lambda x: float(x) / float(len(score_list)), score_list))

@@ -47,42 +47,20 @@ class Model(object):
         self.is_training = tf.placeholder(tf.bool)
         self.reward = tf.placeholder(tf.float32, [None])
 
-        # video LSTM layer, [n_steps * (batch_size, input_dim)] -> [n_steps * (batch_size, 2*lstm_dim)]
+        # bi-decode video
+        lstm_dim = self.lstm_dim
         input_x = tf.contrib.layers.dropout(self.input_x, self.dropout_prob, is_training=self.is_training)
-        v_lstm_output, _ = layers.dynamic_origin_lstm_layer(input_x, self.lstm_dim, 'v_lstm', input_len = self.input_x_len)
-        v_lstm_output = tf.contrib.layers.dropout(v_lstm_output, self.dropout_prob, is_training=self.is_training)
+        v_lstm_out, v_lstm_state = layers.dynamic_origin_bilstm_layer(input_x, lstm_dim/2, 'v_lstm_bi', input_len = self.input_x_len)
 
-        # Question LSTM layer, [n_steps * (batch_size, input_dim)] -> [n_steps * (batch_size, 2*lstm_dim)]
-        input_q = tf.contrib.layers.dropout(self.input_q, self.dropout_prob, is_training=self.is_training)
-        q_lstm_output, q_lstm_state = layers.dynamic_origin_lstm_layer(input_q, self.lstm_dim, 'q_lstm', input_len=self.input_q_len)
-        q_lstm_output = tf.contrib.layers.dropout(q_lstm_output, self.dropout_prob, is_training=self.is_training)
+        # decode question
+        _, q_lstm_state = layers.dynamic_origin_lstm_layer(self.input_q, lstm_dim, '1_lstm', input_len = self.input_q_len)
         q_last_state = tf.contrib.layers.dropout(q_lstm_state[1], self.dropout_prob, is_training=self.is_training)
 
-        # local attention layer (batch_size, max_q_n_words, q_dim) , [n_steps * (batch_size, 2*lstm_dim)] -> [batch_size, 2*lstm_dim]
-        v_first_attention_output, first_attention_score_list = layers.collective_matrix_attention_layer(v_lstm_output, q_lstm_output, self.attention_dim, 'v_first_local_attention', context_len=self.input_q_len, use_maxpooling=False)
-        v_global_attention_output, first_attention_score = layers.matrix_attention_layer(v_lstm_output, q_last_state, self.attention_dim, 'v_global_attention')
+        v_first_attention_output, _ = layers.matrix_attention_layer(v_lstm_out, q_last_state, self.attention_dim, 'v_first_local_attention')
 
-        # video attention lstm
-        v_input_att = tf.contrib.layers.dropout(v_first_attention_output, self.dropout_prob, is_training=self.is_training)
-        v_att_lstm_output, _ = layers.dynamic_origin_lstm_layer(v_input_att, self.lstm_dim, 'v_att_lstm', input_len=self.input_q_len)
-        v_att_lstm_output = tf.contrib.layers.dropout(v_att_lstm_output, self.dropout_prob, is_training=self.is_training)
-
-        #att_last_state = tf.contrib.layers.dropout(att_lstm_state[1], self.dropout_prob, is_training=self.is_training)
-
-        # second attention (batch_size, input_video_dim)
-        v_second_attention_output, second_attention_score = layers.matrix_attention_layer(v_att_lstm_output, q_last_state, self.attention_dim, 'v_second_local_attention')
-
-        self.attention = tf.reduce_sum(tf.multiply(first_attention_score_list, tf.expand_dims(second_attention_score, 2)),1)
-
-        # dot product
-        #qv_dot = tf.multiply(q_last_state, v_last_state)
-
-        # concatenation
-        concat_output = tf.concat([q_last_state, v_global_attention_output, v_second_attention_output], axis=1)
-        self.v_first_lstm_output = v_lstm_output
+        concat_output = tf.concat([v_first_attention_output, q_last_state], axis=1)
+        self.v_first_lstm_output = v_lstm_out
         self.q_last_state = q_last_state
-        print(self.v_first_lstm_output.shape)
-
 
         # decoder
 
@@ -174,9 +152,9 @@ class Model(object):
 
                     # decoder_state
                     tiled_decoder_state_h = tf.tile(tf.expand_dims(decoder_state, 1),
-                                                    tf.stack([1, self.input_n_frames, 1]))
+                                                    tf.stack([1, self.input_n_frames , 1]))
                     tiled_q_last_state = tf.tile(tf.expand_dims(self.q_last_state, 1),
-                                                 tf.stack([1, self.input_n_frames, 1]))
+                                                 tf.stack([1, self.input_n_frames , 1]))
                     attention_input = tf.tanh(utils.tensor_matmul(self.v_first_lstm_output, self.attention_w_x)
                                               + utils.tensor_matmul(tiled_q_last_state, self.attention_w_q)
                                               + utils.tensor_matmul(tiled_decoder_state_h, self.attention_w_h)
@@ -236,9 +214,9 @@ class Model(object):
 
                     # decoder_state
                     tiled_decoder_state_h = tf.tile(tf.expand_dims(decoder_state, 1),
-                                                    tf.stack([1, self.input_n_frames, 1]))
+                                                    tf.stack([1, self.input_n_frames , 1]))
                     tiled_q_last_state = tf.tile(tf.expand_dims(self.q_last_state, 1),
-                                                 tf.stack([1, self.input_n_frames, 1]))
+                                                 tf.stack([1, self.input_n_frames , 1]))
                     attention_input = tf.tanh(utils.tensor_matmul(self.v_first_lstm_output, self.attention_w_x)
                                               + utils.tensor_matmul(tiled_q_last_state, self.attention_w_q)
                                               + utils.tensor_matmul(tiled_decoder_state_h, self.attention_w_h)

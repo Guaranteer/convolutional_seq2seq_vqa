@@ -79,7 +79,7 @@ class Model(object):
 
         # concatenation
         concat_output = tf.concat([q_last_state, v_global_attention_output, v_second_attention_output], axis=1)
-        self.v_first_lstm_output = v_lstm_output
+        self.v_first_lstm_output = v_att_lstm_output
         self.q_last_state = q_last_state
         print(self.v_first_lstm_output.shape)
 
@@ -174,9 +174,9 @@ class Model(object):
 
                     # decoder_state
                     tiled_decoder_state_h = tf.tile(tf.expand_dims(decoder_state, 1),
-                                                    tf.stack([1, self.input_n_frames, 1]))
+                                                    tf.stack([1, self.max_n_q_words, 1]))
                     tiled_q_last_state = tf.tile(tf.expand_dims(self.q_last_state, 1),
-                                                 tf.stack([1, self.input_n_frames, 1]))
+                                                 tf.stack([1, self.max_n_q_words, 1]))
                     attention_input = tf.tanh(utils.tensor_matmul(self.v_first_lstm_output, self.attention_w_x)
                                               + utils.tensor_matmul(tiled_q_last_state, self.attention_w_q)
                                               + utils.tensor_matmul(tiled_decoder_state_h, self.attention_w_h)
@@ -236,9 +236,9 @@ class Model(object):
 
                     # decoder_state
                     tiled_decoder_state_h = tf.tile(tf.expand_dims(decoder_state, 1),
-                                                    tf.stack([1, self.input_n_frames, 1]))
+                                                    tf.stack([1, self.max_n_q_words, 1]))
                     tiled_q_last_state = tf.tile(tf.expand_dims(self.q_last_state, 1),
-                                                 tf.stack([1, self.input_n_frames, 1]))
+                                                 tf.stack([1, self.max_n_q_words, 1]))
                     attention_input = tf.tanh(utils.tensor_matmul(self.v_first_lstm_output, self.attention_w_x)
                                               + utils.tensor_matmul(tiled_q_last_state, self.attention_w_q)
                                               + utils.tensor_matmul(tiled_decoder_state_h, self.attention_w_h)
