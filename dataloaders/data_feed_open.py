@@ -21,6 +21,7 @@ class Batcher(object):
         self.reshuffle = reshuffle
         self.next_idx = 0
         self.feature_path = params['feature_path']
+        self.feature_origin_path = params['feature_origin_path']
         self.params = params
         self.max_batch_size = params['batch_size']
 
@@ -69,18 +70,26 @@ class Batcher(object):
             type_vec = np.zeros((batch_size), dtype=int)
             for i in range(batch_size):
                 curr_data_index = self.data_index[self.next_idx + i]
-                vid = self.key_file[curr_data_index][0][2:]
-                if not os.path.exists(self.feature_path + '/feat/%s.h5' % vid):
-                    continue
-                with h5py.File(self.feature_path + '/feat/%s.h5' % vid, 'r') as hf:
-                    fg = np.asarray(hf['fg'])
-                    bg = np.asarray(hf['bg'])
-                    feat = np.hstack([fg, bg])
-                with h5py.File(self.feature_path + '/flow/%s.h5' % vid, 'r') as hf:
-                    fg2 = np.asarray(hf['fg'])
-                    bg2 = np.asarray(hf['bg'])
-                    feat2 = np.hstack([fg2, bg2])
-                feat = feat + feat2
+                if self.params['is_origin_dataset']:
+                    vid = self.key_file[curr_data_index][0]
+                    if not os.path.exists(self.feature_origin_path + '/%s.h5' % vid):
+                        print('the video is not exist:', vid)
+                        continue
+                    with h5py.File(self.feature_origin_path + '/%s.h5' % vid, 'r') as hf:
+                        feat = np.asarray(hf['feature'])
+                else:
+                    vid = self.key_file[curr_data_index][0][2:]
+                    if not os.path.exists(self.feature_path + '/feat/%s.h5' % vid):
+                        continue
+                    with h5py.File(self.feature_path + '/feat/%s.h5' % vid, 'r') as hf:
+                        fg = np.asarray(hf['fg'])
+                        bg = np.asarray(hf['bg'])
+                        feat = np.hstack([fg, bg])
+                    with h5py.File(self.feature_path + '/flow/%s.h5' % vid, 'r') as hf:
+                        fg2 = np.asarray(hf['fg'])
+                        bg2 = np.asarray(hf['bg'])
+                        feat2 = np.hstack([fg2, bg2])
+                    feat = feat + feat2
 
                 inds = np.floor(np.arange(0, len(feat) - 0.1, len(feat) / self.params["max_n_frames"])).astype(int)
                 frames = feat[inds, :]

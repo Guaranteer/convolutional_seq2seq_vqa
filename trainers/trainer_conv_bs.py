@@ -80,6 +80,8 @@ class Trainer(object):
         utils.count_total_variables()
         print('****************************')
 
+        # valid_acc = self._evaluate(sess, self.model, self.valid_batcher)
+
         all_epoch_time = 0
         epoch_time_list = list()
         for i_epoch in range(self.params['max_epoches']):
@@ -266,7 +268,7 @@ class Trainer(object):
 
 
             sequences = list()
-            for i_batch in range(batch_size):
+            for batch_step in range(batch_size):
                 global_seqs_and_scores = list()
                 for j in range(self.beam_width):
                     global_seqs_and_scores.append([list(),1.0])
@@ -283,25 +285,25 @@ class Trainer(object):
                 all_batch_time += batch_time
 
                 ans_prods, ans_idxs = test_ans[0], test_ans[1]
-                print(ans_prods.shape)
-                for i_batch in range(batch_size):
+                for batch_step in range(batch_size):
                     all_condidates = list()
-                    global_seqs_and_scores = sequences[i_batch]
+                    global_seqs_and_scores = sequences[batch_step]
                     for j in range(self.beam_width):
                         for k in range(self.beam_width):
-                            cur_score = ans_prods[i_batch*self.beam_width+j][i][k]
-                            cur_idx = ans_idxs[i_batch*self.beam_width+j][i][k]
+                            cur_score = ans_prods[batch_step*self.beam_width+j][i][k]
+                            cur_idx = ans_idxs[batch_step*self.beam_width+j][i][k]
                             condidate = [global_seqs_and_scores[j][0] + [cur_idx], global_seqs_and_scores[j][1]* (-np.log(cur_score))]
                             all_condidates.append(condidate)
                     ordered = sorted(all_condidates, key=lambda x: x[1])
-                    sequences[i_batch] = ordered[:self.beam_width]
+                    sequences[batch_step] = ordered[:self.beam_width]
 
-                for i_batch in range(batch_size):
-                    global_seqs_and_scores = sequences[i_batch]
+                for batch_step in range(batch_size):
+                    global_seqs_and_scores = sequences[batch_step]
                     for j in range(len(global_seqs_and_scores)):
                         global_seq = global_seqs_and_scores[j][0]
-                        cur_ans_vecs[i_batch * self.beam_width + j, :i+1, :] = self.train_batcher.all_word_vec[global_seq]
+                        cur_ans_vecs[batch_step * self.beam_width + j, :i+1, :] = self.train_batcher.all_word_vec[global_seq]
 
+                print(sequences[0])
 
 
 

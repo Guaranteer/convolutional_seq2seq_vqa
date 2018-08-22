@@ -12,7 +12,7 @@
 
 
     "regularization_beta": 1e-7,
-
+    "is_origin_dataset":false,
 
     "batch_size": 64,
     "n_types": 5,
@@ -41,9 +41,9 @@
     "ques_kwidths": "3,3",
     "ques_nhid_default": 256,
     "ques_kwidth_default": 3,
-    "embedding_dropout_keep_prob": 0.7,
-    "nhid_dropout_keep_prob": 0.7,
-    "out_dropout_keep_prob":0.7,
+    "embedding_dropout_keep_prob": 0.9,
+    "nhid_dropout_keep_prob": 0.9,
+    "out_dropout_keep_prob":0.9,
     "position_embeddings_enable": true,
     "pos_trainable":false,
     "nout_embed":256,
@@ -54,5 +54,6 @@
     "train_json": "../data/train_clean1.json",
     "val_json": "../data/val_clean1.json",
     "test_json": "../data/test_clean1.json",
-    "feature_path":"../../data/tsn_score/"
+    "feature_path":"../../data/tsn_score/",
+    "feature_origin_path":"../../data/activity-c3d/"
 }

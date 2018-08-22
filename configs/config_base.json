@@ -16,6 +16,7 @@
     "ref_dim":300,
     "attention_dim": 256,
     "regularization_beta": 1e-7,
+    "is_origin_dataset":false,
     "dropout_prob": 0.6,
     "decode_dim": 256,
 
@@ -35,5 +36,7 @@
     "train_json": "../data/train_clean1.json",
     "val_json": "../data/val_clean1.json",
     "test_json": "../data/test_clean1.json",
-    "feature_path":"../../data/tsn_score/"
+    "feature_path":"../../data/tsn_score/",
+    "feature_origin_path":"../../data/activity-c3d/"
+
 }
