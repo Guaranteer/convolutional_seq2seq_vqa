@@ -30,11 +30,11 @@ class ConvModel(object):
 
         if self.params["position_embeddings_enable"]:
             self.encoder_frame_pos_embed = tf.get_variable('en_frame_pos_emb', shape=[self.input_n_frames,
-                                            self.input_frame_dim], dtype=tf.float32, initializer=tf.contrib.layers.xavier_initializer(), trainable=self.params["pos_trainable"])
+                                            self.input_frame_dim], dtype=tf.float32, initializer=tf.contrib.layers.xavier_initializer(), trainable=False)
             self.encoder_ques_pos_embed = tf.get_variable('en_ques_pos_emb', shape=[self.max_n_q_words,
-                                            self.input_ques_dim], dtype=tf.float32, initializer=tf.contrib.layers.xavier_initializer(), trainable=self.params["pos_trainable"])
+                                            self.input_ques_dim], dtype=tf.float32, initializer=tf.contrib.layers.xavier_initializer(), trainable=False)
             self.decoder_pos_embed = tf.get_variable('de_pos_emb', shape=[self.max_n_a_words,
-                                            self.input_ans_dim], dtype=tf.float32,initializer=tf.contrib.layers.xavier_initializer(), trainable=self.params["pos_trainable"])
+                                            self.input_ans_dim], dtype=tf.float32,initializer=tf.contrib.layers.xavier_initializer(), trainable=False)
 
         vocab_embeddings = load_file(self.params['word_embedding'])
         self.vocab_embeddings = tf.constant(vocab_embeddings, dtype=tf.float32)
@@ -56,11 +56,13 @@ class ConvModel(object):
 
 
         if self.params["position_embeddings_enable"]:
+            print('add encoder position embedding...')
             frame_positions_embed = tf.tile([self.encoder_frame_pos_embed],[self.batch_size, 1, 1])
             self.frame_vecs_with_pos = tf.add(self.frame_vecs, frame_positions_embed)
             ques_positions_embed = tf.tile([self.encoder_ques_pos_embed], [self.batch_size, 1, 1])
             self.ques_vecs_with_pos = tf.add(self.ques_vecs, ques_positions_embed)
         else:
+            print('no encoder position embedding...')
             self.frame_vecs_with_pos = self.frame_vecs
             self.ques_vecs_with_pos = self.ques_vecs
 
@@ -164,9 +166,11 @@ class ConvModel(object):
 
 
         if self.params["position_embeddings_enable"]:
+            print('add decoder position embedding...')
             ans_positions_embed = tf.tile([self.decoder_pos_embed], [self.batch_size, 1, 1])
             self.ans_vecs = tf.add(self.answer_vecs, ans_positions_embed)
         else:
+            print('no decoder position embedding...')
             self.ans_vecs = self.answer_vecs
 
         # Apply dropout to embeddings

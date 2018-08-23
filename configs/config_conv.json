@@ -44,7 +44,7 @@
     "embedding_dropout_keep_prob": 0.9,
     "nhid_dropout_keep_prob": 0.9,
     "out_dropout_keep_prob":0.9,
-    "position_embeddings_enable": true,
+    "position_embeddings_enable": false,
     "pos_trainable":false,
     "nout_embed":256,
 
