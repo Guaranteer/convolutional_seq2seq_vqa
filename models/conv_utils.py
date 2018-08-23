@@ -194,6 +194,8 @@ def conv_decoder_stack(target_embed, enc_output, inputs, nhids_list, kwidths_lis
 
         # add attention
         # decoder output -->linear mapping to embed, + target embed,  query decoder output a, softmax --> scores, scores*encoder_output_c-->output,  output--> linear mapping to nhid+  decoder_output -->
+        # if False:
+        #     print('add attention in:', layer_idx)
         att_out = make_attention(target_embed, enc_output, next_layer, layer_idx)
         next_layer = (next_layer + att_out) * tf.sqrt(0.5)
 
