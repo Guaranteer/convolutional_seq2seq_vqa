@@ -22,7 +22,8 @@ class Trainer(object):
         self.params = params
         self.model = model
         self.index2word = load_file(self.params['index2word'])
-        # print(self.index2word)
+
+        print(len(self.index2word))
 
     def train(self):
         # training
