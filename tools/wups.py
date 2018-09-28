@@ -75,6 +75,10 @@ def compute_wups(input_gt, input_pred, thresh):
 
     if len(input_pred) == 0 or len(input_gt) == 0:
         final_score = 0
+    elif thresh == -1:
+        score_list = [measure(ta, pa) for (ta, pa) in zip(input_gt, input_pred)]
+        final_score = sum(map(
+               lambda x: float(x) / float(len(score_list)), score_list))
     else:
         pred_s = 0
         for pred_word in input_pred:
