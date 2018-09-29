@@ -96,12 +96,12 @@ def conv1d_weightnorm(inputs, layer_idx, out_dim, kernel_size, padding="SAME", d
                             initializer=tf.random_normal_initializer(mean=0, stddev=tf.sqrt(
                                 4.0 * dropout / (kernel_size * in_dim))), trainable=True)
         V_norm = tf.norm(V.initialized_value(), axis=[0, 1])  # V shape is M*N*k,  V_norm shape is k
-        g = tf.get_variable('g', dtype=tf.float32, initializer=V_norm, trainable=True)
+        # g = tf.get_variable('g', dtype=tf.float32, initializer=V_norm, trainable=True)
         b = tf.get_variable('b', shape=[out_dim], dtype=tf.float32, initializer=tf.zeros_initializer(), trainable=True)
 
         # use weight normalization (Salimans & Kingma, 2016)
-        W = tf.reshape(g, [1, 1, out_dim]) * tf.nn.l2_normalize(V, [0, 1])
-        inputs = tf.nn.bias_add(tf.nn.conv1d(value=inputs, filters=W, stride=1, padding=padding), b)
+        # W = tf.reshape(g, [1, 1, out_dim]) * tf.nn.l2_normalize(V, [0, 1])
+        inputs = tf.nn.bias_add(tf.nn.conv1d(value=inputs, filters=V, stride=1, padding=padding), b)
         return inputs
 
 
@@ -166,7 +166,7 @@ def conv_decoder_stack(target_embed, enc_output, inputs, nhids_list, kwidths_lis
         next_layer = tf.contrib.layers.dropout(
             inputs=next_layer,
             keep_prob=dropout_dict['hid'],
-            is_training=mode == tf.contrib.learn.ModeKeys.TRAIN)
+            is_training=mode)
         # special process here, first padd then conv, because tf does not suport padding other than SAME and VALID
         next_layer = tf.pad(next_layer, [[0, 0], [kwidths_list[layer_idx] - 1, kwidths_list[layer_idx] - 1], [0, 0]],
                             "CONSTANT")
